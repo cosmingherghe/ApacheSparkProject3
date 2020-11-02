@@ -3,6 +3,7 @@ package dev.cosmingherghe.spark;
 import org.apache.log4j.Logger;
 import org.apache.log4j.Level;
 
+import org.apache.spark.Partition;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -34,9 +35,11 @@ public class Application {
         philadelphiaDf.printSchema();
         philadelphiaDf.show();
 
-//        combineDataFrames(durhamDf, philadelphiaDf);
+        //add combineDataFrames
+        combineDataFrames(durhamDf, philadelphiaDf);
 
     }
+
 
     private static Dataset<Row> buildDurhamParksDataFrame(SparkSession spark) {
 
@@ -50,7 +53,7 @@ public class Application {
             .withColumn("city", lit("Durham"))
             .withColumn("has_playground", df.col("fields.playground"))
             .withColumn("address", df.col("fields.address"))
-            .withColumn("zip code", df.col("fields.zip"))
+            .withColumn("zipcode", df.col("fields.zip"))
             .withColumn("land_in_acres", df.col("fields.acres"))
             .withColumn("geoX", df.col("geometry.coordinates").getItem(0))
             .withColumn("geoY", df.col("geometry.coordinates").getItem(1))
@@ -74,24 +77,25 @@ public class Application {
 //        df = df.filter(lower(df.col("USE_")).like("%park%"));
         df = df.filter("lower(USE_) like '%park%' ");
 
-        df = df.withColumn("park_id", concat(lit("phil_"), df.col("OBJECTID")))
+        df = df
+            .withColumnRenamed("OBJECTID", "park_id")
             .withColumnRenamed("ASSET_NAME", "park_name")
             .withColumn("city", lit("Philadelphia"))
             .withColumnRenamed("ADDRESS", "address")
             .withColumn("has_playground", lit("UNKNOWN"))
             .withColumnRenamed("ZIPCODE",  "zipcode")
-            .withColumnRenamed("land_in_acres","ACREAGE")
+            .withColumn("land_in_acres", lit("UNKNOWN"))
             .withColumn("geoX", lit("UNKNOWN"))
             .withColumn("geoY", lit("UNKNOWN"))
 
         //dropping all the old fields that we don't need anymore.
             .drop("SITE_NAME")
-            .drop("OBJECTID")
             .drop("CHILD_OF")
             .drop("TYPE")
             .drop("USE_")
             .drop("DESCRIPTION")
             .drop("SQ_FEET")
+            .drop("ACREAGE")
             .drop("ALLIAS")
             .drop("CHRONOLOGY")
             .drop("NOTES")
@@ -99,8 +103,23 @@ public class Application {
             .drop("OCCUPANT")
             .drop("TENANT")
             .drop("LABEL")
-        ;
+            .drop("DATE_EDITED");
 
         return df;
+    }
+
+    private static void combineDataFrames(Dataset<Row> df1, Dataset<Row> df2) {
+
+        // match by column names using the UnionByName method
+        // if we use just the union() method, it matches the columns based on order.
+
+        Dataset<Row> df = df1.unionByName(df2);
+        df.printSchema();
+        df.show();
+
+        System.out.println("We have " + df.count() + " records.");
+
+        Partition[] partitions = df.rdd().partitions();
+        System.out.println("Total number of Partitions " + partitions.length);
     }
 }
